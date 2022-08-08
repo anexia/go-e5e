@@ -1,14 +1,15 @@
 package e5e
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
+	"strings"
 	"testing"
-
-	"github.com/stretchr/testify/require"
+	"time"
 )
 
 type SumData struct {
@@ -21,328 +22,339 @@ type SumEvent struct {
 	Data SumData `json:"data"`
 }
 
-type testfunction func()
+type unexportedEvent struct {
+	Event
+	Data SumData `json:"data"`
+}
+
+type unexportedResult struct {
+	Result
+}
+
 type entrypoints struct{}
 
-func (f *entrypoints) SimpleEntrypoint(event Event, context Context) (*Return, error) {
+var defaultPayload = map[string]interface{}{
+	"event": map[string]interface{}{
+		"params": map[string][]string{
+			"test-param": {"a", "b"},
+		},
+		"data": map[string]interface{}{
+			"a": 2,
+			"b": 3,
+		},
+		"request_headers": map[string]string{
+			"test-header": "test-header-value",
+		},
+		"type": "object",
+	},
+	"context": map[string]interface{}{
+		"async": false,
+		"date":  "2022-08-04T14:15:53.885414",
+		"type":  "object",
+	},
+}
+
+func TestStartSimpleEntrypoint(t *testing.T) {
+	assertExecutionNormal(t, "SimpleEntrypoint", defaultPayload, expectedData{result: "{\"result\":null}"})
+}
+
+func TestStartInvalidSimpleEntrypoint(t *testing.T) {
+	expected := expectedData{
+		exitCode: -1,
+		err:      "go-e5e: error while preparing entrypoint: entrypoint InvalidSimpleEntrypoint not found",
+	}
+	assertExecutionNormal(t, "InvalidSimpleEntrypoint", defaultPayload, expected)
+}
+
+func TestStartSumEntrypoint(t *testing.T) {
+	expected := expectedData{
+		result: "{\"result\":{\"data\":5}}",
+	}
+	assertExecutionNormal(t, "SumEntrypoint", defaultPayload, expected)
+}
+
+func TestStartSumEntrypointKeepalive(t *testing.T) {
+	expected := expectedData{
+		result: "{\"result\":{\"data\":5}}",
+	}
+
+	payloadBytes, err := json.Marshal(defaultPayload)
+	if err != nil {
+		t.Fatalf("Preparing payload JSON failed: %v", err)
+	}
+	payloadBytes = append(payloadBytes, '\n')
+
+	commands := []byte("ping\nping\n")
+	commands = append(commands, payloadBytes...)
+	commands = append(commands, []byte("ping\n")...)
+	commands = append(commands, payloadBytes...)
+
+	stdoutValue, stderrValue := assertExecution(t, "SumEntrypoint", commands, true, expected)
+
+	expectedOutputs := []string{"pong", "pong", "\x00\x00\x00\x00\x00{\"result\":{\"data\":5}}", "pong", "\x00\x00\x00\x00\x00{\"result\":{\"data\":5}}", ""}
+	expectedStdout := strings.Join(expectedOutputs, "\x00\x00\x00\x00\x00\x00")
+
+	expectedStderr := strings.Repeat("\x00\x00\x00\x00\x00\x00", 5)
+
+	if stdoutValue != expectedStdout {
+		t.Errorf("Invalid stdout: %s", stdoutValue)
+	}
+
+	if stderrValue != expectedStderr {
+		t.Errorf("Invalid stderr: %s", stderrValue)
+	}
+
+}
+
+func TestStartSumNoPtrEntrypoint(t *testing.T) {
+	expected := expectedData{
+		result: "{\"result\":{\"data\":5}}",
+	}
+	assertExecutionNormal(t, "SumEntrypointNoPtr", defaultPayload, expected)
+}
+
+func TestStartEventContextEntrypoint(t *testing.T) {
+	expected := expectedData{
+		result: "{\"result\":{\"data\":{\"context\":{\"date\":\"2022-08-04T14:15:53.885414\",\"type\":\"object\"},\"event\":{\"params\":{\"test-param\":[\"a\",\"b\"]},\"request_headers\":{\"test-header\":\"test-header-value\"},\"type\":\"object\",\"data\":{\"a\":2,\"b\":3}}}}}",
+	}
+	assertExecutionNormal(t, "EventContextEntrypoint", defaultPayload, expected)
+}
+
+func TestStartPrintStdOutEntrypoint(t *testing.T) {
+	expected := expectedData{
+		stdout: "print",
+		stderr: "error print",
+		result: "{\"result\":null}",
+	}
+	assertExecutionNormal(t, "PrintStdOutErrEntrypoint", defaultPayload, expected)
+}
+
+func TestStartErrorEntrypoint(t *testing.T) {
+	expected := expectedData{
+		exitCode: -1,
+		err:      "go-e5e: error while executing entrypoint: entrypoint returned error error",
+	}
+	assertExecutionNormal(t, "ErrorEntrypoint", defaultPayload, expected)
+}
+
+func TestStartInvalidParametersEntrypoint(t *testing.T) {
+	expected := expectedData{
+		exitCode: -1,
+		err:      "go-e5e: error while preparing entrypoint: invalid number of entrypoint parameters on InvalidParametersEntrypoint",
+	}
+	assertExecutionNormal(t, "InvalidParametersEntrypoint", defaultPayload, expected)
+}
+
+func TestStartInvalidParameterTypesEntrypoint(t *testing.T) {
+	expected := expectedData{
+		exitCode: -1,
+		err:      "go-e5e: error while executing entrypoint: error while parsing json json: cannot unmarshal object into Go struct field .context of type uint",
+	}
+	assertExecutionNormal(t, "InvalidParameterTypesEntrypoint", defaultPayload, expected)
+}
+
+func TestStartInvalidResultEntrypoint(t *testing.T) {
+	expected := expectedData{
+		exitCode: -1,
+		err:      "go-e5e: error while preparing entrypoint: invalid number of entrypoint return values on InvalidResultEntrypoint",
+	}
+	assertExecutionNormal(t, "InvalidResultEntrypoint", defaultPayload, expected)
+}
+
+func TestStartInvalidResultValueEntrypoint(t *testing.T) {
+	expected := expectedData{
+		exitCode: -1,
+		err:      "go-e5e: error while processing function response: json: unsupported value: +Inf",
+	}
+	assertExecutionNormal(t, "InvalidResultValueEntrypoint", defaultPayload, expected)
+}
+
+func TestStartInvalidErrorResultValueEntrypoint(t *testing.T) {
+	expected := expectedData{
+		exitCode: -1,
+		err:      "go-e5e: error while executing entrypoint: invalid error return value",
+	}
+	assertExecutionNormal(t, "InvalidErrorResultValueEntrypoint", defaultPayload, expected)
+}
+
+func TestStartInvalidUnexportedEntrypoint(t *testing.T) {
+	expected := expectedData{
+		exitCode: -1,
+		err:      "go-e5e: error while preparing entrypoint: entrypoint invalidUnexportedEntrypoint not found",
+	}
+	assertExecutionNormal(t, "invalidUnexportedEntrypoint", defaultPayload, expected)
+}
+
+type expectedData struct {
+	stderr   string
+	stdout   string
+	result   string
+	exitCode int
+	err      string
+}
+
+func assertExecutionNormal(t *testing.T, entrypoint string, payload map[string]interface{}, expected expectedData) {
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("Preparing payload JSON failed: %v", err)
+	}
+	payloadBytes = append(payloadBytes, '\n')
+	stdoutValue, stderrValue := assertExecution(t, entrypoint, payloadBytes, false, expected)
+
+	stdoutTerminator := "\x00\x00\x00\x00\x00"
+
+	if expected.err != "" {
+		stdoutTerminator = ""
+	}
+
+	expectedStdout := fmt.Sprintf("%s%s%s", expected.stdout, stdoutTerminator, expected.result)
+	if stdoutValue != expectedStdout {
+		t.Errorf("Invalid stdout: %s", stdoutValue)
+	}
+
+	if stderrValue != expected.stderr {
+		t.Errorf("Invalid stderr: %s", stderrValue)
+	}
+}
+
+func assertExecution(t *testing.T, entrypoint string, payload []byte, keepalive bool, expected expectedData) (string, string) {
+	stdoutReader, stdoutWriter, _ := os.Pipe()
+	stderrReader, stderrWriter, _ := os.Pipe()
+	stdinReader, stdinWriter, _ := os.Pipe()
+
+	origStdout := os.Stdout
+	origStderr := os.Stderr
+	origStdin := os.Stdin
+	origArgs := os.Args
+
+	defer func() {
+		os.Stdout = origStdout
+		os.Stderr = origStderr
+		os.Stdin = origStdin
+		os.Args = origArgs
+	}()
+
+	os.Stdout = stdoutWriter
+	os.Stderr = stderrWriter
+	os.Stdin = stdinReader
+
+	stdoutSignal := make(chan string)
+	stderrSignal := make(chan string)
+
+	go func() {
+		_, _ = stdinWriter.Write(payload)
+	}()
+
+	go func() {
+		buffer := &bytes.Buffer{}
+		_, _ = io.Copy(buffer, stdoutReader)
+		stdoutSignal <- buffer.String()
+	}()
+
+	go func() {
+		buffer := &bytes.Buffer{}
+		_, _ = io.Copy(buffer, stderrReader)
+		stderrSignal <- buffer.String()
+	}()
+
+	keepaliveString := "0"
+	if keepalive {
+		keepaliveString = "1"
+	}
+	os.Args = []string{os.Args[0], entrypoint, "\x00\x00\x00\x00\x00", keepaliveString, "\x00\x00\x00\x00\x00\x00"}
+
+	execSignal := make(chan interface{})
+	go func() {
+		exitCode, err := start(&entrypoints{})
+
+		if exitCode != expected.exitCode {
+			t.Errorf("Invalid exit code %d", exitCode)
+		}
+
+		// Error was expected but none was returned
+		if err == nil && expected.err != "" {
+			t.Error("Execution did not return error")
+		}
+
+		if err != nil && err.Error() != expected.err {
+			t.Errorf("Execution returned invalid error %v", err)
+		}
+
+		close(execSignal)
+	}()
+
+	if !keepalive {
+		<-execSignal
+	} else {
+		time.Sleep(1 * time.Second)
+	}
+
+	_ = stdoutWriter.Close()
+	_ = stderrWriter.Close()
+
+	stdoutValue := <-stdoutSignal
+	stderrValue := <-stderrSignal
+
+	return stdoutValue, stderrValue
+}
+
+func (f *entrypoints) SimpleEntrypoint(event Event, context Context) (*Result, error) {
 	return nil, nil
 }
 
-func (f *entrypoints) SumEntrypoint(event SumEvent, context Context) (*Return, error) {
-	return &Return{
+func (f *entrypoints) SumEntrypoint(event SumEvent, context Context) (*Result, error) {
+	return &Result{
 		Data: event.Data.A + event.Data.B,
 	}, nil
 }
 
-func (f *entrypoints) PrintStdOutEntrypoint(event Event, context Context) (*Return, error) {
+func (f *entrypoints) SumEntrypointNoPtr(event SumEvent, context Context) (Result, error) {
+	return Result{
+		Data: event.Data.A + event.Data.B,
+	}, nil
+}
+
+func (f *entrypoints) EventContextEntrypoint(event SumEvent, context Context) (*Result, error) {
+	return &Result{
+		Data: map[string]interface{}{
+			"event":   event,
+			"context": context,
+		},
+	}, nil
+}
+
+func (f *entrypoints) PrintStdOutErrEntrypoint(event Event, context Context) (*Result, error) {
 	fmt.Print("print")
+	_, _ = fmt.Fprint(os.Stderr, "error print")
 	return nil, nil
 }
 
-func (f *entrypoints) ErrorEntrypoint(event Event, context Context) (*Return, error) {
+func (f *entrypoints) ErrorEntrypoint(event Event, context Context) (*Result, error) {
 	return nil, fmt.Errorf("error")
 }
 
-func (f *entrypoints) InvalidParametersEntrypoint() (*Return, error) {
+func (f *entrypoints) InvalidParametersEntrypoint() (*Result, error) {
 	return nil, nil
 }
 
-func (f *entrypoints) InvalidReturnEntrypoint(event Event, context Context) {
+func (f *entrypoints) InvalidParameterTypesEntrypoint(event uint, context uint) (*Result, error) {
+	return nil, nil
+}
+
+func (f *entrypoints) InvalidResultEntrypoint(event Event, context Context) {
 	return
 }
 
-func (f *entrypoints) InvalidReturnValueEntrypoint(event Event, context Context) (*Return, error) {
-	return &Return{
+func (f *entrypoints) InvalidResultValueEntrypoint(event Event, context Context) (*Result, error) {
+	return &Result{
 		Data: math.Inf(1),
 	}, nil
 }
 
-func (f *entrypoints) InvalidErrorReturnValueEntrypoint(event Event, context Context) (*Return, int) {
+func (f *entrypoints) InvalidErrorResultValueEntrypoint(event Event, context Context) (*Result, int) {
 	return nil, 1
 }
 
-func TestStartSimpleEntrypoint(t *testing.T) {
-	event, context := prepareInputObjectFiles("{}", "{}")
-	defer os.Remove(event.Name())
-	defer os.Remove(context.Name())
-
-	stdOut, stdErr, exitCode := runMocked(func() {
-		if err := Start(&entrypoints{}); err != nil {
-			fmtFprint(os.Stderr, fmt.Sprintf("%s", err))
-			osExit(-255)
-		}
-	}, "SimpleEntrypoint", event.Name(), context.Name())
-
-	require.EqualValues(t, "{\"output\":\"\",\"result\":null}", stdOut)
-	require.EqualValues(t, "", stdErr)
-	require.EqualValues(t, 0, exitCode)
-}
-
-func TestStartInvalidSimpleEntrypoint(t *testing.T) {
-	event, context := prepareInputObjectFiles("{}", "{}")
-	defer os.Remove(event.Name())
-	defer os.Remove(context.Name())
-
-	stdOut, stdErr, exitCode := runMocked(func() {
-		if err := Start(&entrypoints{}); err != nil {
-			fmtFprint(os.Stderr, fmt.Sprintf("%s", err))
-			osExit(-255)
-		}
-	}, "InvalidSimpleEntrypointt", event.Name(), context.Name())
-
-	require.EqualValues(t, "", stdOut)
-	require.EqualValues(t, "invalid entrypoint name", stdErr)
-	require.EqualValues(t, -255, exitCode)
-}
-
-func TestStartSumEntrypoint(t *testing.T) {
-	event, context := prepareInputObjectFiles("{\"data\":{\"a\": 2, \"b\": 3}}", "{}")
-	defer os.Remove(event.Name())
-	defer os.Remove(context.Name())
-
-	stdOut, stdErr, exitCode := runMocked(func() {
-		if err := Start(&entrypoints{}); err != nil {
-			fmtFprint(os.Stderr, fmt.Sprintf("%s", err))
-			osExit(-255)
-		}
-	}, "SumEntrypoint", event.Name(), context.Name())
-
-	require.EqualValues(t, "{\"output\":\"\",\"result\":{\"data\":5}}", stdOut)
-	require.EqualValues(t, "", stdErr)
-	require.EqualValues(t, 0, exitCode)
-}
-
-func TestStartPrintStdOutEntrypoint(t *testing.T) {
-	event, context := prepareInputObjectFiles("{}", "{}")
-	defer os.Remove(event.Name())
-	defer os.Remove(context.Name())
-
-	stdOut, stdErr, exitCode := runMocked(func() {
-		if err := Start(&entrypoints{}); err != nil {
-			fmtFprint(os.Stderr, fmt.Sprintf("%s", err))
-			osExit(-255)
-		}
-	}, "PrintStdOutEntrypoint", event.Name(), context.Name())
-
-	require.EqualValues(t, "{\"output\":\"print\",\"result\":null}", stdOut)
-	require.EqualValues(t, "", stdErr)
-	require.EqualValues(t, 0, exitCode)
-}
-
-func TestStartErrorEntrypoint(t *testing.T) {
-	event, context := prepareInputObjectFiles("{}", "{}")
-	defer os.Remove(event.Name())
-	defer os.Remove(context.Name())
-
-	stdOut, stdErr, exitCode := runMocked(func() {
-		if err := Start(&entrypoints{}); err != nil {
-			fmtFprint(os.Stderr, fmt.Sprintf("%s", err))
-			osExit(-255)
-		}
-	}, "ErrorEntrypoint", event.Name(), context.Name())
-
-	require.EqualValues(t, "{\"output\":\"\",\"result\":null}", stdOut)
-	require.EqualValues(t, "error", stdErr)
-	require.EqualValues(t, -1, exitCode)
-}
-
-func TestStartInvalidArgumentsSimpleEntrypoint(t *testing.T) {
-	stdOut, stdErr, exitCode := runMocked(func() {
-		if err := Start(&entrypoints{}); err != nil {
-			fmtFprint(os.Stderr, fmt.Sprintf("%s", err))
-			osExit(-255)
-		}
-	}, "SimpleEntrypoint")
-
-	require.EqualValues(t, "", stdOut)
-	require.EqualValues(t, "invalid number of process arguments", stdErr)
-	require.EqualValues(t, -255, exitCode)
-}
-
-func TestStartInvalidEventSimpleEntrypoint(t *testing.T) {
-	event, context := prepareInputObjectFiles("{...}", "{}")
-	defer os.Remove(event.Name())
-	defer os.Remove(context.Name())
-
-	stdOut, stdErr, exitCode := runMocked(func() {
-		if err := Start(&entrypoints{}); err != nil {
-			fmtFprint(os.Stderr, fmt.Sprintf("%s", err))
-			osExit(-255)
-		}
-	}, "SimpleEntrypoint", event.Name(), context.Name())
-
-	require.EqualValues(t, "", stdOut)
-	require.EqualValues(t, "cannot apply event object to 'Event' type", stdErr)
-	require.EqualValues(t, -255, exitCode)
-}
-
-func TestStartInvalidContextSimpleEntrypoint(t *testing.T) {
-	event, context := prepareInputObjectFiles("{}", "{...}")
-	defer os.Remove(event.Name())
-	defer os.Remove(context.Name())
-
-	stdOut, stdErr, exitCode := runMocked(func() {
-		if err := Start(&entrypoints{}); err != nil {
-			fmtFprint(os.Stderr, fmt.Sprintf("%s", err))
-			osExit(-255)
-		}
-	}, "SimpleEntrypoint", event.Name(), context.Name())
-
-	require.EqualValues(t, "", stdOut)
-	require.EqualValues(t, "cannot apply context object to 'Context' type", stdErr)
-	require.EqualValues(t, -255, exitCode)
-}
-
-func TestStartInvalidParametersEntrypoint(t *testing.T) {
-	event, context := prepareInputObjectFiles("{}", "{}")
-	defer os.Remove(event.Name())
-	defer os.Remove(context.Name())
-
-	stdOut, stdErr, exitCode := runMocked(func() {
-		if err := Start(&entrypoints{}); err != nil {
-			fmtFprint(os.Stderr, fmt.Sprintf("%s", err))
-			osExit(-255)
-		}
-	}, "InvalidParametersEntrypoint", event.Name(), context.Name())
-
-	require.EqualValues(t, "", stdOut)
-	require.EqualValues(t, "invalid number of entrypoint parameters", stdErr)
-	require.EqualValues(t, -255, exitCode)
-}
-
-func TestStartInvalidReturnEntrypoint(t *testing.T) {
-	event, context := prepareInputObjectFiles("{}", "{}")
-	defer os.Remove(event.Name())
-	defer os.Remove(context.Name())
-
-	stdOut, stdErr, exitCode := runMocked(func() {
-		if err := Start(&entrypoints{}); err != nil {
-			fmtFprint(os.Stderr, fmt.Sprintf("%s", err))
-			osExit(-255)
-		}
-	}, "InvalidReturnEntrypoint", event.Name(), context.Name())
-
-	require.EqualValues(t, "", stdOut)
-	require.EqualValues(t, "invalid number of entrypoint return values", stdErr)
-	require.EqualValues(t, -255, exitCode)
-}
-
-func TestStartInvalidReturnValueEntrypoint(t *testing.T) {
-	event, context := prepareInputObjectFiles("{}", "{}")
-	defer os.Remove(event.Name())
-	defer os.Remove(context.Name())
-
-	stdOut, stdErr, exitCode := runMocked(func() {
-		if err := Start(&entrypoints{}); err != nil {
-			fmtFprint(os.Stderr, fmt.Sprintf("%s", err))
-			osExit(-255)
-		}
-	}, "InvalidReturnValueEntrypoint", event.Name(), context.Name())
-
-	require.EqualValues(t, "", stdOut)
-	require.EqualValues(t, "cannot marshal return value", stdErr)
-	require.EqualValues(t, -255, exitCode)
-}
-
-func TestStartInvalidErrorReturnValueEntrypoint(t *testing.T) {
-	event, context := prepareInputObjectFiles("{}", "{}")
-	defer os.Remove(event.Name())
-	defer os.Remove(context.Name())
-
-	stdOut, stdErr, exitCode := runMocked(func() {
-		if err := Start(&entrypoints{}); err != nil {
-			fmtFprint(os.Stderr, fmt.Sprintf("%s", err))
-			osExit(-255)
-		}
-	}, "InvalidErrorReturnValueEntrypoint", event.Name(), context.Name())
-
-	require.EqualValues(t, "", stdOut)
-	require.EqualValues(t, "invalid error return value", stdErr)
-	require.EqualValues(t, -255, exitCode)
-}
-
-func TestStartInvalidEventFileSimpleEntrypoint(t *testing.T) {
-	event, context := prepareInputObjectFiles("{}", "{}")
-	defer os.Remove(event.Name())
-	defer os.Remove(context.Name())
-
-	stdOut, stdErr, exitCode := runMocked(func() {
-		if err := Start(&entrypoints{}); err != nil {
-			fmtFprint(os.Stderr, fmt.Sprintf("%s", err))
-			osExit(-255)
-		}
-	}, "SimpleEntrypoint", "/invalid.input", context.Name())
-
-	require.EqualValues(t, "", stdOut)
-	require.EqualValues(t, "cannot read event object file '/invalid.input'", stdErr)
-	require.EqualValues(t, -255, exitCode)
-}
-
-func TestStartInvalidContextFileSimpleEntrypoint(t *testing.T) {
-	event, context := prepareInputObjectFiles("{}", "{}")
-	defer os.Remove(event.Name())
-	defer os.Remove(context.Name())
-
-	stdOut, stdErr, exitCode := runMocked(func() {
-		if err := Start(&entrypoints{}); err != nil {
-			fmtFprint(os.Stderr, fmt.Sprintf("%s", err))
-			osExit(-255)
-		}
-	}, "SimpleEntrypoint", event.Name(), "/invalid.input")
-
-	require.EqualValues(t, "", stdOut)
-	require.EqualValues(t, "cannot read context object file '/invalid.input'", stdErr)
-	require.EqualValues(t, -255, exitCode)
-}
-
-func prepareInputObjectFiles(eventInput string, contextInput string) (event *os.File, context *os.File) {
-	event, _ = ioutil.TempFile("", "go-e5e-test-event.input")
-	context, _ = ioutil.TempFile("", "go-e5e-test-context.input")
-
-	event.Write([]byte(eventInput))
-	event.Sync()
-	context.Write([]byte(contextInput))
-	context.Sync()
-
-	return event, context
-}
-
-func runMocked(f testfunction, args ...string) (stdOut string, stdErr string, exitCode int) {
-	// Mock `os.Exit`
-	exitCode = 1024
-	origOsExit := osExit
-	defer func() {
-		osExit = origOsExit
-	}()
-	osExit = func(code int) {
-		exitCode = code
-	}
-
-	// Mock `fmt.Fprint`
-	stdOut = ""
-	stdErr = ""
-	origFmtFprint := fmtFprint
-	defer func() {
-		fmtFprint = origFmtFprint
-	}()
-	fmtFprint = func(w io.Writer, a ...interface{}) (int, error) {
-		switch w {
-		case os.Stdout:
-			stdOut += fmt.Sprint(a...)
-		case os.Stderr:
-			stdErr += fmt.Sprint(a...)
-		}
-		return 0, nil
-	}
-
-	// Mock `os.Args`
-	origOsArgs := os.Args
-	defer func() {
-		os.Args = origOsArgs
-	}()
-	os.Args = append([]string{"cmd"}, args...)
-
-	f()
-
-	return stdOut, stdErr, exitCode
+func (f *entrypoints) invalidUnexportedEntrypoint(event Event, context Context) (*Result, error) {
+	return nil, nil
 }
