@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Reimplemented with new binary runtime support (breaks support with previous custom runtime)
 - Moved repository to https://github.com/anexia/go-e5e
+- Use the Anexia vanity import path in the documentation
 
 
 ## 1.1.0 - 2020-08-24

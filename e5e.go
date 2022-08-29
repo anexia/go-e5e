@@ -1,4 +1,4 @@
-package e5e
+package e5e // import "go.anx.io/e5e"
 
 import (
 	"bufio"
