@@ -1,10 +1,10 @@
 go-e5e
 ======
 
-[![PkgGoDev](https://pkg.go.dev/badge/github.com/anexia/go-e5e)](https://pkg.go.dev/github.com/anexia/go-e5e)
+[![PkgGoDev](https://pkg.go.dev/badge/go.anx.io/e5e)](https://pkg.go.dev/go.anx.io/e5e)
 [![Build Status](https://github.com/anexia/go-e5e/actions/workflows/test.yml/badge.svg?branch=main&event=push)](https://github.com/anexia/go-e5e/actions/?query=workflow%3Atest)
 [![codecov](https://codecov.io/gh/anexia/go-e5e/branch/main/graph/badge.svg)](https://codecov.io/gh/anexia/go-e5e)
-[![Go Report Card](https://goreportcard.com/badge/github.com/anexia/go-e5e)](https://goreportcard.com/report/github.com/anexia/go-e5e)
+[![Go Report Card](https://goreportcard.com/badge/go.anx.io/e5e)](https://goreportcard.com/report/go.anx.io/e5e)
 
 go-e5e is a support library to help Go developers build Anexia e5e functions.
 
@@ -13,7 +13,7 @@ go-e5e is a support library to help Go developers build Anexia e5e functions.
 With a [correctly configured](https://go.dev/doc/install) Go toolchain:
 
 ```sh
-go get -u github.com/anexia/go-e5e
+go get -u go.anx.io/e5e
 ```
 
 # Getting started
@@ -24,7 +24,7 @@ package main
 import (
 	"runtime"
 	
-	"github.com/anexia/go-e5e"
+	"go.anx.io/e5e"
 )
 
 type SumData struct {
