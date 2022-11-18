@@ -27,19 +27,32 @@ import (
 	"go.anx.io/e5e"
 )
 
-type SumData struct {
+type SumEventData struct {
 	A int `json:"a"`
 	B int `json:"b"`
 }
 
 type SumEvent struct {
 	e5e.Event
-	Data SumData `json:"data"`
+	Data SumEventData `json:"data,omitempty"`
+}
+
+// Using a custom `e5e.Context` class is optional and only needed to access the `Data` attribute on the
+// context. This attribute may be used to get the return value of an authorizer function, for example. If access
+// to the `Data` attribute is not needed, the `e5e.Context` type can be used on the entrypoint directly.
+
+type SumContextData struct {
+	AuthKey string `json:"auth_key"`
+}
+
+type SumContext struct {
+	e5e.Context
+	Data SumContextData `json:"data,omitempty"`
 }
 
 type entrypoints struct{}
 
-func (f *entrypoints) MyEntrypoint(event SumEvent, context e5e.Context) (e5e.Result, error) {
+func (f *entrypoints) MyEntrypoint(event SumEvent, context SumContext) (e5e.Result, error) {
 	return e5e.Result{
 		Status: 200,
 		ResponseHeaders: map[string]string{
