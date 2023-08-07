@@ -55,7 +55,7 @@ type Context struct {
 type Result struct {
 	Status          int               `json:"status,omitempty"`
 	ResponseHeaders map[string]string `json:"response_headers,omitempty"`
-	Data            interface{}       `json:"data,omitempty"`
+	Data            interface{}       `json:"data"`
 	Type            string            `json:"type,omitempty"`
 }
 
