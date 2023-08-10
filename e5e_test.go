@@ -120,6 +120,20 @@ func TestStartEventContextEntrypoint(t *testing.T) {
 	assertExecutionNormal(t, "EventContextEntrypoint", defaultPayload, expected)
 }
 
+func TestStartEmptyResultEntrypoint(t *testing.T) {
+	expected := expectedData{
+		result: "{\"result\":{\"data\":null}}",
+	}
+	assertExecutionNormal(t, "EmptyResultEntrypoint", defaultPayload, expected)
+}
+
+func TestStartNilDataResultEntrypoint(t *testing.T) {
+	expected := expectedData{
+		result: "{\"result\":{\"status\":200,\"data\":null}}",
+	}
+	assertExecutionNormal(t, "NilDataResultEntrypoint", defaultPayload, expected)
+}
+
 func TestStartPrintStdOutEntrypoint(t *testing.T) {
 	expected := expectedData{
 		stdout: "print",
@@ -311,6 +325,17 @@ func (f *entrypoints) SumEntrypoint(event SumEvent, context Context) (*Result, e
 func (f *entrypoints) SumEntrypointNoPtr(event SumEvent, context Context) (Result, error) {
 	return Result{
 		Data: event.Data.A + event.Data.B,
+	}, nil
+}
+
+func (f *entrypoints) EmptyResultEntrypoint(event SumEvent, context Context) (*Result, error) {
+	return &Result{}, nil
+}
+
+func (f *entrypoints) NilDataResultEntrypoint(event SumEvent, context Context) (*Result, error) {
+	return &Result{
+		Status: 200,
+		Data:   nil,
 	}, nil
 }
 
