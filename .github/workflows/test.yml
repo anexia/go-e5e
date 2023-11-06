@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: [ 1.17, 1.18, 1.19 ]
+        go: [ "1.20", "1.21" ] # test only the last two supported versions
     steps:
       - name: Checkout
         uses: actions/checkout@v3

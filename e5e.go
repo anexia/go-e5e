@@ -1,261 +1,142 @@
-package e5e // import "go.anx.io/e5e"
+// Package e5e helps Anexia customers who want to use the e5e Functions-as-a-Service (FaaS)
+// offering in the [Anexia Engine].
+//
+// It provides a simple runtime which properly handles the input from the runtime.
+//
+// [Anexia Engine]: https://engine.anexia-it.com/docs/en/module/e5e/
+package e5e // import "go.anx.io/e5e/v2"
 
-import (
-	"bufio"
-	"encoding/json"
-	"fmt"
-	"os"
-	"reflect"
-	"runtime"
-	"strings"
+// EventDataType tells more information about the type of the data inside an [Event].
+type EventDataType string
+
+const (
+	// EventDataTypeText tells us that the data is a plain string.
+	//
+	// Equivalent to the `text/plain` content type.
+	EventDataTypeText EventDataType = "text"
+
+	// EventDataTypeObject tells us that the data is a JSON object.
+	//
+	// The data is either a primitive data type (bool, int) or contains structured
+	// data like a struct or a map.
+	//
+	// Equivalent to the `application/*` content type.
+	EventDataTypeObject EventDataType = "object"
+
+	// EventDataTypeBinary tells us that the data is a base64 encoded string.
+	//
+	// The data contains a binary object representation of the response body.
+	EventDataTypeBinary EventDataType = "binary"
+
+	// EventDataTypeMixed tells us about mixed data.
+	//
+	// The data contains a `map[string][]any` where each key represents a field
+	// name submitted by the client. Since a field name may occur multiple times
+	// within one request, the values of a field are always given as a list.
+	// Each value might be of a primitive data type such as string, int, bool, nil
+	// or it might be a binary object representation.
+	//
+	// Equivalent to the `multipart/form-data` content type.
+	EventDataTypeMixed EventDataType = "mixed"
 )
 
-// Init to enforce handling of the metadata command used by e5e to determine the supported feature set.
-func init() {
-	type metadata struct {
-		LibraryVersion string   `json:"library_version"`
-		Runtime        string   `json:"runtime"`
-		RuntimeVersion string   `json:"runtime_version"`
-		Features       []string `json:"features"`
-	}
+// The Data constraint is used to constrain the incoming data for [Event] and [Context].
+// It's equal to any, because there's not a good constraint which would be equivalent to `Serializable`.
+type Data any
 
-	if len(os.Args) == 2 && os.Args[1] == "metadata" {
-		metadataInstance := metadata{
-			LibraryVersion: LibraryVersion,
-			Runtime:        "Go",
-			RuntimeVersion: runtime.Version(),
-			Features:       []string{"keepalive"},
-		}
-		metadataBytes, err := json.Marshal(metadataInstance)
-		if err != nil {
-			panic(fmt.Errorf("go-e5e: metadata generation failed: %w", err))
-		}
-		_, _ = os.Stdout.Write(metadataBytes)
-		os.Exit(0)
-	}
+// Event contains all sorts of information about the event that triggered the
+// execution, such as GET parameters, request headers, input data and the type of the input data.
+type Event[T Data] struct {
+	// Params contains the GET parameters of the request.
+	// As GET parameters can occur multiple times within a single request,
+	// the values are given as a list.
+	Params map[string][]string `json:"params,omitempty"`
+
+	// Contains the HTTP headers that were sent with this request.
+	RequestHeaders map[string]string `json:"request_headers,omitempty"`
+
+	// The type of the data in [Data].
+	Type EventDataType `json:"type,omitempty"`
+
+	// The data that's submitted with the request.
+	Data T `json:"data,omitempty"`
 }
 
-// Event represents the passed `event` object of an e5e function. Contains all fields but `data`, as the user code is
-// expected to encapsulate this struct within its own struct containing the `data` definition.
-type Event struct {
-	Params         map[string][]string `json:"params,omitempty"`
-	RequestHeaders map[string]string   `json:"request_headers,omitempty"`
-	Type           string              `json:"type,omitempty"`
+// Context represents the passed `context` object of an e5e function.
+type Context[T Data] struct {
+	// Set to true if the event was triggered in an asynchronous way,
+	// meaning that the event trigger does not wait for the return of the
+	// function execution.
+	Async bool `json:"async,omitempty"`
+
+	// The time the event was triggered.
+	Date string `json:"date,omitempty"`
+
+	// The kind of trigger that triggered the execution.
+	// Fallback is `generic`, if the trigger is unknown.
+	Type string `json:"type,omitempty"`
+
+	// Additional data about the context.
+	Data T `json:"data,omitempty"`
 }
 
-// Context represents the passed `context` object of an e5e function. Contains all fields but `data`, as the user code
-// is expected to encapsulate this struct within its own struct containing the `data` definition when necessary.
-type Context struct {
-	Async bool   `json:"async,omitempty"`
-	Date  string `json:"date,omitempty"`
-	Type  string `json:"type,omitempty"`
+// Request contains the whole request information.
+type Request[T, TContext Data] struct {
+	Context Context[TContext] `json:"context"`
+	Event   Event[T]          `json:"event"`
 }
+
+// Data provides a shortcut to [r.Event.Data].
+func (r Request[T, TContext]) Data() T { return r.Event.Data }
 
 // Result represents the function result value passed back to E5E.
 type Result struct {
 	Status          int               `json:"status,omitempty"`
 	ResponseHeaders map[string]string `json:"response_headers,omitempty"`
-	Data            interface{}       `json:"data"`
-	Type            string            `json:"type,omitempty"`
+	Data            any               `json:"data"`
+	Type            ResultDataType    `json:"type,omitempty"`
 }
 
-// Struct for the internal e5e response representation.
-type response struct {
-	Result interface{} `json:"result"`
-}
+// ResultDataType tells more information about the type of the data inside a [Result].
+type ResultDataType string
 
-// Represents metadata for an entrypoint execution.
-type execution struct {
-	stdoutTermination          string
-	keepalive                  bool
-	daemonExecutionTermination string
-	entrypoint                 reflect.Value
-	payloadType                reflect.Type
-	stdinReader                *bufio.Reader
-}
+const (
+	// ResultDataTypeText tells E5E that the data is a plain string.
+	//
+	// Equivalent to the `text/plain` content type.
+	ResultDataTypeText ResultDataType = "text"
+
+	// ResultDataTypeObject tells E5E that the data is a JSON object.
+	//
+	// The data is either a primitive data type (bool, int) or contains structured
+	// data like a struct or a map.
+	//
+	// Equivalent to the `application/*` content type.
+	ResultDataTypeObject ResultDataType = "object"
+
+	// ResultDataTypeBinary tells E5E that the data is a base64 encoded string.
+	//
+	// The data contains a binary object representation of the response body.
+	ResultDataTypeBinary ResultDataType = "binary"
+)
 
 // LibraryVersion represents the implemented custom binary interface version.
 //
 //goland:noinspection GoUnusedConst
-const LibraryVersion = "1.2.0"
+const LibraryVersion = "2.0.0"
 
-// Start takes the struct containing the available entrypoint methods and handles the invocation of the
-// entrypoint as well as the communication with the e5e platform itself. Control will not be handed back after
-// function execution. In case of an error a Go panic will be raised otherwise an os.Exit(0) occurs.
-//
-// Rules:
-//   - Entrypoint functions must take 2 input parameters (Event and Context). Both types may be encapsulated within
-//     an user defined struct type.
-//   - Entrypoint functions must return 2 values (Result and error). Type encapsulation is also allowed here.
-//   - The input parameters as well as the return values must be compatible with "encoding/json" standard library.
-//
-//goland:noinspection GoUnusedExportedFunction
-func Start(entrypoints interface{}) {
-	exitCode, err := start(entrypoints)
-	if err != nil {
-		panic(err)
-	}
-	os.Exit(exitCode)
-}
+// options contains all the runtime options that determine the behaviour of the [mux].
+// It is usually read at runtime using [parseArguments], but can be overridden for testing.
+type options struct {
+	// The name of the entrypoint that is executed on incoming events.
+	Entrypoint string
 
-// Internal implementation of the Start logic which returns an exit code and any available error object.
-func start(entrypoints interface{}) (int, error) {
-	executionInstance := execution{}
+	// The termination sequence that should be written on shutdown.
+	DaemonExecutionTerminationSequence string
 
-	// Init execution instance
-	if err := executionInstance.init(entrypoints); err != nil {
-		return -1, fmt.Errorf("go-e5e: %w", err)
-	}
+	// The execution sequence that separates generic output on [os.Stdout] from the encoded responses.
+	StdoutExecutionSequence string
 
-	// Start execution loop
-	for {
-		if err := executionInstance.execute(); err != nil {
-			return -1, fmt.Errorf("go-e5e: %w", err)
-		}
-
-		// In case this is a single execution exit the loop
-		if !executionInstance.keepalive {
-			break
-		}
-
-		// Print execution termination signals
-		_, _ = fmt.Fprint(os.Stdout, executionInstance.daemonExecutionTermination)
-		_, _ = fmt.Fprint(os.Stderr, executionInstance.daemonExecutionTermination)
-	}
-
-	return 0, nil
-}
-
-// Populates the execution struct with values given as command line arguments and fetches the required entrypoint. Will
-// return an error on any invalid condition.
-func (e *execution) init(entrypoints interface{}) error {
-	// Check number of arguments:
-	// binary name, entrypoint, os.Stdout termination, keepalive enabled, daemon execution termination
-	if argCount := len(os.Args); argCount != 5 {
-		return fmt.Errorf("invalid number of process arguments: %d", argCount)
-	}
-
-	e.stdoutTermination = strings.ReplaceAll(os.Args[2], "\\0", "\x00")
-	e.keepalive = os.Args[3] == "1"
-	e.daemonExecutionTermination = strings.ReplaceAll(os.Args[4], "\\0", "\x00")
-	e.stdinReader = bufio.NewReader(os.Stdin)
-
-	var err error
-	e.entrypoint, e.payloadType, err = getEntrypoint(entrypoints, os.Args[1])
-	if err != nil {
-		return fmt.Errorf("error while preparing entrypoint: %w", err)
-	}
-
-	return nil
-}
-
-// Tries to execute the preconfigured entrypoint or responds to a `ping` command in keepalive mode. Will return an error
-// on any invalid condition.
-func (e *execution) execute() error {
-	payloadString, err := e.readStdin()
-	if err != nil {
-		return fmt.Errorf("error while reading os.Stdin: %w", err)
-	}
-
-	if e.keepalive && payloadString == "ping" {
-		_, _ = fmt.Fprint(os.Stdout, "pong")
-		return nil
-	}
-
-	result, err := e.callEntrypoint(payloadString)
-	if err != nil {
-		return fmt.Errorf("error while executing entrypoint: %w", err)
-	}
-
-	responseBytes, err := json.Marshal(response{Result: result})
-	if err != nil {
-		return fmt.Errorf("error while processing function response: %w", err)
-	}
-
-	_, _ = fmt.Fprint(os.Stdout, e.stdoutTermination)
-	_, _ = os.Stdout.Write(responseBytes)
-
-	return nil
-}
-
-// Parses the payload for entrypoint execution, execute the entrypoint and return the validated result. Will return an
-// error on any invalid condition.
-func (e *execution) callEntrypoint(payloadString string) (interface{}, error) {
-	payload := reflect.New(e.payloadType)
-	payloadInterface := payload.Interface()
-	payloadElem := payload.Elem()
-
-	if err := json.Unmarshal([]byte(payloadString), &payloadInterface); err != nil {
-		return nil, fmt.Errorf("error while parsing json %w", err)
-	}
-
-	results := e.entrypoint.Call([]reflect.Value{
-		payloadElem.Field(0),
-		payloadElem.Field(1),
-	})
-
-	if results[1].Kind() != reflect.Interface || !results[1].IsNil() {
-		if err, ok := results[1].Interface().(error); ok {
-			return nil, fmt.Errorf("entrypoint returned error %w", err)
-		} else {
-			return nil, fmt.Errorf("invalid error return value")
-		}
-	}
-
-	return results[0].Interface(), nil
-}
-
-// Reads a line terminated by `\n` from os.Stdin and returns it together with any occurring error.
-func (e *execution) readStdin() (string, error) {
-	line, err := e.stdinReader.ReadString('\n')
-	if err != nil {
-		return line, err
-	}
-	return strings.TrimRight(line, "\n"), nil
-}
-
-// Fetches the given endpoint name from the endpoints struct. Will then try to create a payload struct type based on
-// the used parameter types. Will return an error on any invalid condition.
-func getEntrypoint(entrypoints interface{}, name string) (entrypoint reflect.Value, payload reflect.Type, err error) {
-	// The following reflect calls have a tendency to panic if anything does not work out as we expect.
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("panic while trying to fetch entrypoint %v", r)
-		}
-	}()
-
-	// Fetch entrypoint
-	entrypoint = reflect.ValueOf(entrypoints).MethodByName(name)
-
-	// Validate entrypoint
-	if !entrypoint.IsValid() {
-		err = fmt.Errorf("entrypoint %s not found", name)
-		return
-	}
-	if entrypoint.Type().NumIn() != 2 {
-		err = fmt.Errorf("invalid number of entrypoint parameters on %s", name)
-		return
-	}
-	if entrypoint.Type().NumOut() != 2 {
-		err = fmt.Errorf("invalid number of entrypoint return values on %s", name)
-		return
-	}
-
-	// As we are now as sure as we can get that the method signature is the expected one, we receive the type
-	// information of the first and the second parameter, and create a new references to instances of those types.
-	eventType := entrypoint.Type().In(0)
-	contextType := entrypoint.Type().In(1)
-	payload = reflect.StructOf([]reflect.StructField{
-		{
-			Name: "Event",
-			Type: eventType,
-			Tag:  `json:"event"`,
-		},
-		{
-			Name: "Context",
-			Type: contextType,
-			Tag:  `json:"context"`,
-		},
-	})
-	return
+	// If set to true, the application is kept alive after the first execution and responds to ping events.
+	KeepAlive bool
 }
