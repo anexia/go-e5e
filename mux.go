@@ -32,10 +32,12 @@ func init() {
 
 // Start starts the global mux.
 //
-// The runtime arguments are read from os.Args and based on that,
-// the entrypoint which was added via [AddHandlerFunc] before that gets called.
+// On startup, the runtime arguments are read from [os.Args].
+// This determines the entrypoint to be used for incoming E5E calls.
+// Therefore, the developer must ensure, that a respective handler is registered using [AddHandlerFunc]
+// before this function is called.
 //
-// Every error that is happening will cause a panic.
+// All runtime errors panic.
 func Start(ctx context.Context) {
 	args, err := parseArguments(os.Args)
 	if err != nil {
@@ -50,6 +52,8 @@ func Start(ctx context.Context) {
 
 // AddHandlerFunc adds the handler for the given entrypoint to the global handler.
 // It panics if the entrypoint was already registered.
+//
+// Already registered handlers can be queried by calling [Handlers].
 func AddHandlerFunc[T, TContext Data](entrypoint string, fn func(context.Context, Request[T, TContext]) (*Result, error)) {
 	if err := addHandlerSafely(globalMux, entrypoint, createHandlerFunc[T, TContext](fn)); err != nil {
 		panic(err)
@@ -109,11 +113,6 @@ func parseArguments(args []string) (options, error) {
 //
 // If [options.KeepAlive] is true, the goroutine is blocked and can be cancelled
 // via the context. It also listens for incoming [syscall.SIGINT] signals and stops gracefully.
-//
-// # Example usage
-//
-//	mux := e5e.NewMux()
-//	log.Fatalf("mux error: %v", mux.Start(context.Background()))
 func (m *mux) Start(ctx context.Context, opts options) error {
 	if _, hasEntrypoint := m.handlers[opts.Entrypoint]; !hasEntrypoint {
 		return InvalidEntrypointError{opts.Entrypoint}

@@ -86,7 +86,7 @@ type Request[T, TContext Data] struct {
 	Event   Event[T]          `json:"event"`
 }
 
-// Data provides a shortcut to [r.Event.Data].
+// Data provides a shortcut to the Data of the inner [Event].
 func (r Request[T, TContext]) Data() T { return r.Event.Data }
 
 // Result represents the function result value passed back to E5E.
