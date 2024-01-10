@@ -4,10 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 2.0.0 - 2023-12-07
+## 2.0.0 - 2024-01-10
 
-### Breaking changes
-
+### Changed
 - Set minimum Go version to 1.18.
 - Rewritten the library to follow the Mux pattern of the `net/http` library.
   This ensures that there are no longer runtime errors for wrong entrypoint signatures, since everything
@@ -65,9 +64,8 @@ func main() {
 }
 ```
 
-### Other changes
-
-- Use table-driven tests for tests
+### Added
+- Table-driven tests for tests
 - Add detailed documentation for all public types
 
 ## 1.2.1 - 2023-08-07
