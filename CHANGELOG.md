@@ -4,6 +4,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 2.0.0 - 2023-12-07
+
+### Breaking changes
+
+- Set minimum Go version to 1.18.
+- Rewritten the library to follow the Mux pattern of the `net/http` library.
+  This ensures that there are no longer runtime errors for wrong entrypoint signatures, since everything
+  needs to implement the new `e5e.Handler` interface now.
+- Add support for cancellation using `context.Context`.
+- Add support for strongly-typed request parameters, using the generics of Go 1.18.
+
+A possible migration looks like this (old version first, new version second).
+
+```go
+package main
+
+import (
+  "go.anx.io/e5e"
+)
+
+type SumEventData struct {
+  A int `json:"a,omitempty"`
+  B int `json:"b,omitempty"`
+}
+type entrypoints struct{}
+
+func (e entrypoints) Sum(_ e5e.Context, d SumEventData) (e5e.Result, error) {
+  return e5e.Result{Data: d.A + d.B}, nil
+}
+
+func main() {
+  e5e.Start(&entrypoints{})
+}
+
+```
+
+```go
+package main
+
+import (
+  "context"
+  "log"
+  "go.anx.io/e5e/v2"
+)
+
+type SumEventData struct {
+  A int `json:"a,omitempty"`
+  B int `json:"b,omitempty"`
+}
+
+func Sum(ctx context.Context, request e5e.Request[SumEventData, any]) (*e5e.Result, error) {
+  d := request.Data()
+  return &e5e.Result{Data: d.A + d.B}, nil
+}
+
+func main() {
+  e5e.AddHandlerFunc("Sum", Sum)
+  e5e.Start(context.Background())
+}
+```
+
+### Other changes
+
+- Use table-driven tests for tests
+- Add detailed documentation for all public types
 
 ## 1.2.1 - 2023-08-07
 
