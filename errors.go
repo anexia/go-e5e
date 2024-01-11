@@ -2,7 +2,7 @@ package e5e
 
 import "fmt"
 
-// InvalidEntrypointError is returned if the given entrypoint did not get registered on runtime.
+// InvalidEntrypointError is returned if the given entrypoint did not get registered before invoking [Start].
 type InvalidEntrypointError struct{ Entrypoint string }
 
 func (e InvalidEntrypointError) Error() string {

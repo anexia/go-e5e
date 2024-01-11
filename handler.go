@@ -8,7 +8,7 @@ import (
 
 // A Handler responds to a request.
 //
-// [Handle] should write reply headers and data to the given result and then return.
+// Handle should write the response data with optional metadata to the given result.
 // Returning signals that the request is finished.
 //
 // Except for reading the body, handlers should not modify the provided [Event].
@@ -24,9 +24,9 @@ type Handler[T, TContext Data] interface {
 
 // HandlerFactory provides an interface to a struct that wraps a job to be done
 // combined with a function that can execute it. Its main purpose is to
-// wrap a struct that contains generic types (like a Worker[T] that needs to be
-// invoked with a Request[T]) in such a way as to make it non-generic so that it can
-// be used in other non-generic code like [mux].
+// wrap a struct that contains generic types (like a Handler[T, TContext] that needs to be
+// invoked with a Request[T, TContext]) in such a way as to make it non-generic so that it can
+// be used in other non-generic code like the global mux.
 type HandlerFactory interface {
 	// Execute the handler with payload, which should be a deserializable JSON object.
 	// Any errors that occur due to deserialization or otherwise are returned.
@@ -59,5 +59,5 @@ func createHandlerFunc[T, TContext Data](f func(context.Context, Request[T, TCon
 }
 
 // Handlers returns all registered handlers.
-// It should not be modified directly, instead add new handlers only via [AddHandler] or [addHandlerSafely].
+// It should not be modified directly, instead add new handlers only via [AddHandlerFunc].
 func Handlers() map[string]HandlerFactory { return globalMux.handlers }
