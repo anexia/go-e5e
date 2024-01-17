@@ -10,6 +10,6 @@ jobs:
     if: github.actor != 'dependabot[bot]'
 
     steps:
-      - uses: anexia-it/go.anx.io@main
+      - uses: anexia/go.anx.io@main
         env:
           GOANXIO_E5E_TOKEN: "${{ secrets.GOANXIO_E5E_TOKEN }}"

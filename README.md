@@ -54,7 +54,7 @@ func main() {
 
 * Andreas Stocker <AStocker@anexia-it.com>, Lead Developer
 * Patrick Taibel <PTaibel@anexia-it.com>, Developer
-* Jasmin Oster <joster@anexia.com>, Developer
+* Jasmin Oster <JOster@anexia.com>, Developer
 
 ## Links
 
