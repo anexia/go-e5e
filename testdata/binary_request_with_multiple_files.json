@@ -1,0 +1,28 @@
+{
+	"context": {
+		"type": "integration-test",
+		"async": true,
+		"date": "2024-01-01T00:00:00Z"
+	},
+	"event": {
+		"type": "mixed",
+		"data": [
+			{
+				"binary": "SGVsbG8gd29ybGQh",
+				"type": "binary",
+				"name": "my-file-1.name",
+				"size": 12,
+				"content_type": "application/my-content-type-1",
+				"charset": "utf-8"
+			},
+			{
+				"binary": "SGVsbG8gd29ybGQh",
+				"type": "binary",
+				"name": "my-file-2.name",
+				"size": 12,
+				"content_type": "application/my-content-type-2",
+				"charset": "utf-8"
+			}
+		]
+	}
+}
