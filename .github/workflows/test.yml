@@ -39,5 +39,18 @@ jobs:
         run: go vet ./...
       - name: Run Go test
         run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+
+        # Because the module path differs from the path, we have to to remove the prefix from
+        # the cover file. See also:
+        # https://github.com/paambaati/codeclimate-action/issues/109#issuecomment-751311299
+      - name: Adjust code coverage report for CodeClimate
+        run: |
+          export GO_MODULE_NAME=$(go mod edit -json | jq -r '.Module.Path')
+          sed -i "s%$GO_MODULE_NAME/%%" coverage.txt
+
+      - name: Upload coverage to CodeClimate
+        uses: paambaati/codeclimate-action@v5
+        env:
+          CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
+        with:
+          coverageLocations: "coverage.txt:gocov"
