@@ -3,7 +3,7 @@ go-e5e
 
 [![PkgGoDev](https://pkg.go.dev/badge/go.anx.io/e5e/v2)](https://pkg.go.dev/go.anx.io/e5e/v2)
 [![Build Status](https://github.com/anexia/go-e5e/actions/workflows/test.yml/badge.svg?branch=main&event=push)](https://github.com/anexia/go-e5e/actions/?query=workflow%3Atest)
-[![codecov](https://codecov.io/gh/anexia/go-e5e/branch/main/graph/badge.svg)](https://codecov.io/gh/anexia/go-e5e)
+[![Test Coverage](https://api.codeclimate.com/v1/badges/4707b867d2cb4052797e/test_coverage)](https://codeclimate.com/github/anexia-it/go-e5e/test_coverage)
 [![Go Report Card](https://goreportcard.com/badge/go.anx.io/e5e/v2)](https://goreportcard.com/report/go.anx.io/e5e/v2)
 
 go-e5e is a support library to help Go developers build Anexia e5e functions.
